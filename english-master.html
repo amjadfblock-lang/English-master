@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>English Master</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--tx:#1b1f2a;--mu:#667085;--ac:#4f46e5;--bd:#e3e5ee;--ok:#16a34a;--bad:#dc2626}
+@media(prefers-color-scheme:dark){:root{--bg:#12141c;--card:#1c1f2b;--tx:#eceef5;--mu:#9aa0b4;--ac:#8b85ff;--bd:#2c3040}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:70px}
+header{padding:14px 16px;font-size:20px;font-weight:700;background:var(--ac);color:#fff}
+main{max-width:760px;margin:0 auto;padding:12px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd);z-index:5}
+nav button{flex:1;border:0;background:none;color:var(--mu);padding:8px 2px;font-size:11px}
+nav button span{display:block;font-size:20px}
+nav button.on{color:var(--ac);font-weight:700}
+section{display:none}section.on{display:block}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:10px 0}
+input,select,textarea{width:100%;padding:11px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);font-size:16px;margin:4px 0}
+button.b{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-size:15px;margin:4px 4px 4px 0}
+button.g{background:none;border:1px solid var(--bd);color:var(--tx);border-radius:10px;padding:8px 10px;margin:3px 3px 3px 0;font-size:14px}
+.chips{display:flex;flex-wrap:wrap}
+.mu{color:var(--mu)}.err{color:var(--bad)}
+h2{margin:14px 0 4px;font-size:17px}h3{margin:12px 0 4px;font-size:16px;color:var(--ac)}
+p,li{unicode-bidi:plaintext;margin:5px 0}
+.az{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.az button{padding:10px 0}
+.opt{display:block;width:100%;text-align:left;margin:6px 0}
+.opt.ok{background:var(--ok);color:#fff;border-color:var(--ok)}.opt.no{background:var(--bad);color:#fff;border-color:var(--bad)}
+</style></head><body>
+<header>📚 English Master</header>
+<main>
+<section id="dict" class="on">
+ <input id="dq" placeholder="Type any English word or phrase…" autocapitalize="none">
+ <button class="b" onclick="lookup()">Look up</button>
+ <div id="dout"></div>
+</section>
+<section id="gram">
+ <div class="card"><b>Ask any grammar question</b>
+ <textarea id="gq" rows="2" placeholder="e.g. When do I use “has been” vs “had been”?"></textarea>
+ <button class="b" onclick="askGram()">Ask</button></div>
+ <div id="gtopics"></div>
+ <div id="gout"></div>
+</section>
+<section id="words">
+ <div class="card"><select id="wl"><option>Beginner</option><option selected>Intermediate</option><option>Advanced</option></select>
+ <p class="mu">Pick a letter to get words in order of usefulness, 25 at a time.</p>
+ <div class="az" id="az"></div></div>
+ <div id="wout"></div>
+</section>
+<section id="quiz">
+ <div class="card"><select id="qsrc"><option value="topic">Quiz on a topic</option><option value="saved">Quiz on my saved words</option></select>
+ <input id="qtopic" placeholder="Topic, e.g. Past tenses, Prepositions, Synonyms">
+ <select id="qlv"><option>Beginner</option><option selected>Intermediate</option><option>Advanced</option></select>
+ <button class="b" onclick="startQuiz()">Start 10-question quiz</button></div>
+ <div id="qout"></div>
+</section>
+<section id="saved"><div id="sout"></div></section>
+<section id="settings">
+ <div class="card"><h3>Gemini API key</h3>
+ <p class="mu">Get a free key at aistudio.google.com/apikey. It is saved only in this browser.</p>
+ <input id="k" type="password" placeholder="Paste API key">
+ <h3>Model</h3>
+ <select id="m"><option>gemini-2.5-flash</option><option>gemini-2.5-pro</option><option>gemini-2.0-flash</option></select>
+ <label><input type="checkbox" id="ur" style="width:auto"> Add Urdu explanations (اردو)</label><br>
+ <button class="b" onclick="saveSet()">Save settings</button> <span id="sm" class="mu"></span></div>
+</section>
+</main>
+<nav id="nav"></nav>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let key=store.get('key',''),model=store.get('model','gemini-2.5-flash'),urdu=store.get('urdu',true),saved=store.get('saved',[]);
+const U=()=>urdu?' The learner speaks Urdu: include Urdu translations (اردو) alongside English.':'';
+
+async function ai(prompt,json){
+ if(!key){go('settings');throw new Error('Please add your Gemini API key in Settings first.')}
+ const body={contents:[{parts:[{text:prompt}]}]};
+ if(json)body.generationConfig={responseMimeType:'application/json'};
+ const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const d=await r.json();
+ if(!r.ok)throw new Error((d.error&&d.error.message)||'API error');
+ return d.candidates[0].content.parts.map(p=>p.text||'').join('');
+}
+function md(t){let h='',ul=false;const b=s=>s.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\*(.+?)\*/g,'<i>$1</i>');
+ esc(t).replace(/&quot;/g,'"').split('\n').forEach(l=>{let m;
+  if(m=l.match(/^\s*[-*•]\s+(.*)/)){if(!ul){h+='<ul>';ul=true}h+='<li>'+b(m[1])+'</li>';return}
+  if(ul){h+='</ul>';ul=false}
+  if(m=l.match(/^#{1,4}\s+(.*)/))h+='<h3>'+b(m[1])+'</h3>';
+  else if(l.trim())h+='<p>'+b(l)+'</p>'});
+ return h+(ul?'</ul>':'')}
+async function run(el,fn){el.innerHTML='<p class="mu">Thinking…</p>';try{await fn()}catch(e){el.innerHTML='<p class="err">'+esc(e.message)+'</p>'}}
+function speak(w){try{const u=new SpeechSynthesisUtterance(w);u.lang='en-US';speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
+function isSaved(w){return saved.some(s=>s.w.toLowerCase()===w.toLowerCase())}
+function toggleSave(w,m){const i=saved.findIndex(s=>s.w.toLowerCase()===w.toLowerCase());
+ if(i>=0)saved.splice(i,1);else saved.push({w,m:m||''});store.set('saved',saved);renderSaved()}
+
+/* navigation */
+const tabs=[['dict','📖','Dictionary'],['gram','✏️','Grammar'],['words','🔤','A–Z'],['quiz','🎯','Quiz'],['saved','⭐','Saved'],['settings','⚙️','Settings']];
+$('#nav').innerHTML=tabs.map(t=>`<button data-t="${t[0]}"><span>${t[1]}</span>${t[2]}</button>`).join('');
+$('#nav').onclick=e=>{const b=e.target.closest('button');if(b)go(b.dataset.t)};
+function go(t){document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===t));
+ document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));scrollTo(0,0)}
+
+/* dictionary */
+async function lookup(){const w=$('#dq').value.trim();if(!w)return;const o=$('#dout');
+ run(o,async()=>{const t=await ai(`Act as a complete English dictionary and teacher. Explain "${w}" for a learner.${U()} Use markdown with headings and bullet points, no tables. Sections: Meaning (simple), Parts of speech and each meaning, Pronunciation (IPA and easy respelling), ${urdu?'Urdu meaning, ':''}3 example sentences, Synonyms, Antonyms, Word family (noun/verb/adjective/adverb forms), Common phrases and idioms, Common mistakes, Memory tip. If the word is misspelled, correct it first.`);
+  o.innerHTML=`<div class="card"><button class="g" onclick="speak('${esc(w).replace(/'/g,'')}')">🔊 Listen</button><button class="g" id="sv">${isSaved(w)?'★ Saved':'☆ Save'}</button>${md(t)}</div>`;
+  $('#sv').onclick=()=>{toggleSave(w,'');$('#sv').textContent=isSaved(w)?'★ Saved':'☆ Save'}})}
+$('#dq').addEventListener('keydown',e=>{if(e.key==='Enter')lookup()});
+
+/* grammar */
+const G={'Parts of speech':['Nouns','Pronouns','Verbs','Adjectives','Adverbs','Prepositions','Conjunctions','Interjections','Articles (a, an, the)','Determiners'],
+'12 Tenses':['Simple Present','Present Continuous','Present Perfect','Present Perfect Continuous','Simple Past','Past Continuous','Past Perfect','Past Perfect Continuous','Simple Future','Future Continuous','Future Perfect','Future Perfect Continuous'],
+'Sentences':['Subject-Verb Agreement','Types of Sentences','Phrases and Clauses','Relative Clauses','Question Tags','Direct and Indirect Speech','Active and Passive Voice','Conditionals (0–3, mixed)','Modal Verbs','Gerunds and Infinitives','Comparatives and Superlatives','Countable and Uncountable Nouns'],
+'Usage':['Punctuation','Capitalization','Phrasal Verbs','Idioms','Prepositions of Time and Place','Common Grammar Mistakes','Word Order','Linking Words']};
+$('#gtopics').innerHTML=Object.keys(G).map(k=>`<h2>${k}</h2><div class="chips">${G[k].map(t=>`<button class="g" data-g="${esc(t)}">${esc(t)}</button>`).join('')}</div>`).join('');
+$('#gtopics').onclick=e=>{const b=e.target.closest('[data-g]');if(!b)return;const t=b.dataset.g;
+ run($('#gout'),async()=>{$('#gout').innerHTML='<div class="card">'+md(await ai(`Teach the English grammar topic "${t}" completely, like a great teacher.${U()} Use markdown, headings and bullets, no tables. Include: what it is, all rules (with formulas/structures), 8 clear examples, exceptions, common mistakes with corrections, quick tips, and a 5-question practice set with answers at the end.`))+'</div>';scrollTo(0,$('#gout').offsetTop-60)})};
+function askGram(){const q=$('#gq').value.trim();if(!q)return;
+ run($('#gout'),async()=>{$('#gout').innerHTML='<div class="card">'+md(await ai(`Answer this English grammar question clearly with rules and examples.${U()} Markdown, no tables. Question: ${q}`))+'</div>'})}
+
+/* A–Z words */
+let wl='A',wn=1;
+$('#az').innerHTML='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(c=>`<button class="g" data-l="${c}">${c}</button>`).join('');
+$('#az').onclick=e=>{const b=e.target.closest('[data-l]');if(b){wl=b.dataset.l;wn=1;loadWords()}};
+function loadWords(){const o=$('#wout'),a=(wn-1)*25+1,z=wn*25;
+ run(o,async()=>{const t=await ai(`List English words starting with the letter "${wl}" for a ${$('#wl').value} learner, ranked by usefulness, numbers ${a} to ${z}. Return a JSON array only: [{"w":"word","pos":"noun","en":"simple meaning","ur":"${urdu?'Urdu meaning':''}","ex":"example sentence"}]`,true);
+  const L=JSON.parse(t.replace(/```json|```/g,''));
+  o.innerHTML=`<h2>${wl} · words ${a}–${z}</h2>`+L.map(x=>`<div class="card"><b>${esc(x.w)}</b> <i class="mu">${esc(x.pos)}</i>
+  <button class="g" data-s="${esc(x.w)}">🔊</button><button class="g" data-v="${esc(x.w)}" data-m="${esc(x.en)} ${esc(x.ur||'')}">${isSaved(x.w)?'★':'☆'}</button>
+  <p>${esc(x.en)}</p>${x.ur?`<p>${esc(x.ur)}</p>`:''}<p class="mu">${esc(x.ex)}</p></div>`).join('')+'<button class="b" id="nx">Next 25 words →</button>';
+  $('#nx').onclick=()=>{wn++;loadWords()}})}
+$('#wout').onclick=e=>{const s=e.target.closest('[data-s]'),v=e.target.closest('[data-v]');
+ if(s)speak(s.dataset.s);if(v){toggleSave(v.dataset.v,v.dataset.m);v.textContent=isSaved(v.dataset.v)?'★':'☆'}};
+
+/* quiz */
+let Q=[],qi=0,sc=0;
+function startQuiz(){const o=$('#qout');run(o,async()=>{
+ const src=$('#qsrc').value;if(src==='saved'&&!saved.length)throw new Error('Save some words first (⭐).');
+ const subj=src==='saved'?'these words: '+saved.map(s=>s.w).join(', '):($('#qtopic').value||'general vocabulary and grammar');
+ const t=await ai(`Create 10 multiple-choice English questions for a ${$('#qlv').value} learner about: ${subj}. Return a JSON array only: [{"q":"question","o":["A","B","C","D"],"a":0,"e":"short explanation${urdu?' in English and Urdu':''}"}] where a is the index of the correct option.`,true);
+ Q=JSON.parse(t.replace(/```json|```/g,''));qi=0;sc=0;showQ()})}
+function showQ(){const o=$('#qout');
+ if(qi>=Q.length){o.innerHTML=`<div class="card"><h3>Score: ${sc} / ${Q.length}</h3><p>${sc>=8?'Excellent!':sc>=5?'Good, keep practising.':'Keep learning – try again!'}</p></div>`;return}
+ const q=Q[qi];o.innerHTML=`<div class="card"><p class="mu">Question ${qi+1} of ${Q.length}</p><p><b>${esc(q.q)}</b></p>${q.o.map((x,i)=>`<button class="g opt" data-i="${i}">${esc(x)}</button>`).join('')}<div id="ex"></div></div>`}
+$('#qout').onclick=e=>{const b=e.target.closest('.opt');if(b&&!b.disabled){const q=Q[qi],i=+b.dataset.i;
+ document.querySelectorAll('.opt').forEach(x=>{x.disabled=true;if(+x.dataset.i===q.a)x.classList.add('ok')});
+ if(i===q.a)sc++;else b.classList.add('no');
+ $('#ex').innerHTML=`<p>${esc(q.e||'')}</p><button class="b" id="nq">${qi+1<Q.length?'Next':'See score'}</button>`;
+ $('#nq').onclick=()=>{qi++;showQ()}}};
+
+/* saved */
+function renderSaved(){const o=$('#sout');
+ o.innerHTML=saved.length?`<h2>⭐ My words (${saved.length})</h2><p class="mu">Tap a word to reveal its meaning.</p>`+saved.map((s,i)=>`<div class="card"><details><summary><b>${esc(s.w)}</b></summary><p>${esc(s.m||'Look it up in the Dictionary tab for the full meaning.')}</p></details>
+  <button class="g" data-s="${esc(s.w)}">🔊</button><button class="g" data-d="${i}">Remove</button></div>`).join(''):'<p class="mu">No saved words yet. Tap ☆ on any word to save it.</p>'}
+$('#sout').onclick=e=>{const s=e.target.closest('[data-s]'),d=e.target.closest('[data-d]');
+ if(s)speak(s.dataset.s);if(d){saved.splice(+d.dataset.d,1);store.set('saved',saved);renderSaved()}};
+
+/* settings */
+function saveSet(){key=$('#k').value.trim();model=$('#m').value;urdu=$('#ur').checked;
+ store.set('key',key);store.set('model',model);store.set('urdu',urdu);$('#sm').textContent='Saved ✓'}
+$('#k').value=key;$('#m').value=model;$('#ur').checked=urdu;
+renderSaved();go(key?'dict':'settings');
+</script></body></html>
