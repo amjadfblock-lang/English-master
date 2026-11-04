@@ -73,9 +73,7 @@ nav button span{font-size:18px;margin-bottom:2px}
       </label>
       <button class="b" onclick="saveSettings()">Save settings</button>
       
-    <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-<option value="gemini-2.0-flash">gemini-2.0-flash</option>
-<option value="gemini-1.5-flash">gemini-1.5-flash</option>
+    
 
   </section>
 </main>
@@ -92,7 +90,7 @@ const $=s=>document.querySelector(s);
 const store={get:(k,d)=>{try{return localStorage.getItem(k)||d}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
 
 let key=store.get('key','');
-let model=store.get('model','gemini-2.5-flash');
+let model=store.get('model','gemini-3.8-flash');
 let urdu=store.get('urdu','true')==='true';
 
 $('#k').value=key;
